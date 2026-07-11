@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-const treesDir = "tree"
+const treesDir = "trees"
 
 // Manager manages a package root directory.
 type Manager struct {
@@ -24,7 +24,7 @@ func (m *Manager) Root() string {
 	return m.root
 }
 
-// Init creates the package root structure (the tree/ subdirectory).
+// Init creates the package root structure (the trees/ subdirectory).
 func (m *Manager) Init() error {
 	dir := filepath.Join(m.root, treesDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -33,7 +33,7 @@ func (m *Manager) Init() error {
 	return nil
 }
 
-// CreateTree creates a new named tree directory under tree/.
+// CreateTree creates a new named tree directory under trees/.
 func (m *Manager) CreateTree(name string) error {
 	dir := filepath.Join(m.root, treesDir, name)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -42,23 +42,9 @@ func (m *Manager) CreateTree(name string) error {
 	return nil
 }
 
-// ListTrees returns the names of all trees under tree/.
+// ListTrees returns the names of all available trees.
 func (m *Manager) ListTrees() ([]string, error) {
-	dir := filepath.Join(m.root, treesDir)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("list trees: %w", err)
-	}
-	var trees []string
-	for _, e := range entries {
-		if e.IsDir() {
-			trees = append(trees, e.Name())
-		}
-	}
-	return trees, nil
+	return m.listAllTrees()
 }
 
 // AddManifest copies the manifest file at src into the named tree and returns
@@ -85,27 +71,7 @@ func (m *Manager) AddManifest(tree, src string) (string, error) {
 
 // ListPackages returns all manifests stored in the named tree.
 func (m *Manager) ListPackages(tree string) ([]*Manifest, error) {
-	treeDir := filepath.Join(m.root, treesDir, tree)
-	entries, err := os.ReadDir(treeDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("tree %q not found", tree)
-		}
-		return nil, fmt.Errorf("list packages: %w", err)
-	}
-	var manifests []*Manifest
-	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
-			continue
-		}
-		path := filepath.Join(treeDir, e.Name())
-		manifest, err := loadManifestJSON(path)
-		if err != nil {
-			continue
-		}
-		manifests = append(manifests, manifest)
-	}
-	return manifests, nil
+	return m.listBundledAndLocalPackages(tree)
 }
 
 // loadManifestJSON reads a manifest JSON file without strict validation.
