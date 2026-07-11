@@ -1,4 +1,5 @@
-ipm
+/ipm
+ipm-*
 *.exe
 *.test
 coverage.out
