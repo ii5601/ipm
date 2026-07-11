@@ -23,6 +23,7 @@ jobs:
   build:
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
+    permissions: {}
     strategy:
       matrix:
         include:
@@ -118,6 +119,7 @@ jobs:
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
       (github.event_name == 'workflow_dispatch' && inputs.ping_website)
     runs-on: ubuntu-latest
+    permissions: {}
 
     steps:
       - name: Resolve version
