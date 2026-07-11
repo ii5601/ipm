@@ -36,7 +36,7 @@ asset="ipm-${os}-${arch}"
 url="https://github.com/${repo}/releases/latest/download/${asset}"
 
 mkdir -p "$install_dir"
-curl --fail --location --silent --show-error "$url" -o "$tmp_dir/ipm"
+curl --fail --location --silent --show-error "$url" -o "$tmp_dir/ipm" > /dev/null
 chmod +x "$tmp_dir/ipm"
 mv "$tmp_dir/ipm" "$install_dir/ipm"
 
