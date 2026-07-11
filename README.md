@@ -1,7 +1,4 @@
-# ipm
-
-ipm (Ilya Package Manager) is a small cross-platform package manager prototype written in Go.
-
+![logo](assets/logo.png)
 ## What is implemented
 
 - `trees/` directory for repository trees such as `main`
