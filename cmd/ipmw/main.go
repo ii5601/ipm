@@ -49,8 +49,12 @@ func handleURL(raw string) error {
 		}
 		ipm.Notify("ipm", fmt.Sprintf("Installing %s…", pkg))
 		ipm.WriteLog("installing package: %s", pkg)
-		// TODO: call manager.Install once implemented.
-		ipm.Notify("ipm", fmt.Sprintf("Package %s installed successfully.", pkg))
+		manager := ipm.NewManager(".")
+		manifest, err := manager.InstallPackage(pkg)
+		if err != nil {
+			return err
+		}
+		ipm.Notify("ipm", fmt.Sprintf("Package %s installed successfully.", manifest.Name))
 		ipm.WriteLog("installed package: %s", pkg)
 		return nil
 	default:

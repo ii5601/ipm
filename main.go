@@ -29,21 +29,6 @@ func run(args []string) error {
 	}
 
 	switch args[0] {
-	case "init":
-		root := "."
-		if len(args) > 1 {
-			root = args[1]
-		}
-		manager := ipm.NewManager(root)
-		if err := manager.Init(); err != nil {
-			return err
-		}
-		fmt.Printf("initialized package root at %s\n", manager.Root())
-		return nil
-	case "tree":
-		return runTreeCommand(args[1:])
-	case "manifest":
-		return runManifestCommand(args[1:])
 	case "package":
 		return runPackageCommand(args[1:])
 	case "install":
@@ -60,101 +45,21 @@ func run(args []string) error {
 	}
 }
 
-func runTreeCommand(args []string) error {
-	if len(args) == 0 {
-		return errors.New("tree command requires a subcommand")
-	}
-
-	switch args[0] {
-	case "create":
-		if len(args) < 2 {
-			return errors.New("usage: ipm tree create <name> [root]")
-		}
-		root := "."
-		if len(args) > 2 {
-			root = args[2]
-		}
-		manager := ipm.NewManager(root)
-		if err := manager.CreateTree(args[1]); err != nil {
-			return err
-		}
-		fmt.Printf("created tree %s\n", args[1])
-		return nil
-	case "list":
-		root := "."
-		if len(args) > 1 {
-			root = args[1]
-		}
-		manager := ipm.NewManager(root)
-		trees, err := manager.ListTrees()
-		if err != nil {
-			return err
-		}
-		for _, tree := range trees {
-			fmt.Println(tree)
-		}
-		return nil
-	default:
-		return fmt.Errorf("unknown tree subcommand %q", args[0])
-	}
-}
-
-func runManifestCommand(args []string) error {
-	if len(args) == 0 {
-		return errors.New("manifest command requires a subcommand")
-	}
-
-	switch args[0] {
-	case "validate":
-		if len(args) != 2 {
-			return errors.New("usage: ipm manifest validate <file>")
-		}
-		manifest, err := ipm.LoadManifest(args[1])
-		if err != nil {
-			return err
-		}
-		fmt.Printf("manifest %s %s is valid\n", manifest.Name, manifest.Version)
-		return nil
-	case "add":
-		if len(args) < 3 {
-			return errors.New("usage: ipm manifest add <tree> <file> [root]")
-		}
-		root := "."
-		if len(args) > 3 {
-			root = args[3]
-		}
-		manager := ipm.NewManager(root)
-		target, err := manager.AddManifest(args[1], args[2])
-		if err != nil {
-			return err
-		}
-		fmt.Printf("stored manifest in %s\n", target)
-		return nil
-	default:
-		return fmt.Errorf("unknown manifest subcommand %q", args[0])
-	}
-}
-
 func runInstallCommand(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: ipm install <tree>/<package> [root]")
+		return errors.New("usage: ipm install <package>|<tree>/<package> [root]")
 	}
 	root := "."
 	if len(args) > 1 {
 		root = args[1]
 	}
-	pkg := args[0]
-	tree := ""
-	if parts := strings.SplitN(pkg, "/", 2); len(parts) == 2 {
-		tree = parts[0]
-		pkg = parts[1]
+	manager := ipm.NewManager(root)
+	manifest, err := manager.InstallPackage(args[0])
+	if err != nil {
+		return err
 	}
-	fmt.Printf("installing %s", pkg)
-	if tree != "" {
-		fmt.Printf(" from tree %s", tree)
-	}
-	fmt.Printf(" in %s\n", root)
-	fmt.Println("(installation not yet implemented)")
+	tree, pkg := parsePackageLabel(args[0], manifest.Name)
+	fmt.Printf("installed %s from tree %s\n", pkg, tree)
 	return nil
 }
 
@@ -202,22 +107,23 @@ func runProtocolURL(raw string) error {
 	}
 }
 
-
 func runPackageCommand(args []string) error {
 	if len(args) == 0 {
+		return errors.New("package command requires a subcommand")
 	}
 
 	switch args[0] {
 	case "list":
-		if len(args) < 2 {
-			return errors.New("usage: ipm package list <tree> [root]")
-		}
+		tree := "main"
 		root := "."
+		if len(args) > 1 {
+			tree = args[1]
+		}
 		if len(args) > 2 {
 			root = args[2]
 		}
 		manager := ipm.NewManager(root)
-		packages, err := manager.ListPackages(args[1])
+		packages, err := manager.ListPackages(tree)
 		if err != nil {
 			return err
 		}
@@ -265,15 +171,21 @@ func printUsage() {
 	fmt.Println(`ipm - a small cross-platform package manager prototype
 
 Usage:
-  ipm init [root]
-  ipm tree create <name> [root]
-  ipm tree list [root]
-  ipm manifest validate <file>
-  ipm manifest add <tree> <file> [root]
-  ipm package list <tree> [root]
-  ipm install <tree>/<package> [root]
+  ipm package list [tree] [root]
+  ipm install <package>|<tree>/<package> [root]
   ipm protocol register [handler-path]
   ipm protocol unregister
   ipm update check <url> <token> [current-version]
   ipm ipm://<action>/...     handle a protocol URL directly`)
+}
+
+func parsePackageLabel(ref, fallback string) (tree, pkg string) {
+	tree, pkg = "main", fallback
+	if parts := strings.SplitN(ref, "/", 2); len(parts) == 2 {
+		tree = parts[0]
+		pkg = parts[1]
+	} else if strings.TrimSpace(ref) != "" {
+		pkg = ref
+	}
+	return tree, pkg
 }
