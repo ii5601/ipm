@@ -1,0 +1,143 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish to GitHub Releases'
+        type: boolean
+        default: true
+      ping_website:
+        description: 'Ping website about new version'
+        type: boolean
+        default: false
+      version:
+        description: 'Version tag (e.g. v1.0.0) — required when using workflow_dispatch'
+        required: false
+        type: string
+
+jobs:
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    permissions: {}
+    strategy:
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            suffix: .exe
+            build_ipmw: true
+          - goos: linux
+            goarch: amd64
+            suffix: ''
+            build_ipmw: false
+          - goos: darwin
+            goarch: amd64
+            suffix: ''
+            build_ipmw: false
+          - goos: darwin
+            goarch: arm64
+            suffix: ''
+            build_ipmw: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build ipm
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -trimpath -o ipm-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }} .
+
+      - name: Build ipmw (silent protocol handler, Windows only)
+        if: matrix.build_ipmw
+        env:
+          GOOS: windows
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -trimpath -ldflags="-H windowsgui" \
+            -o ipmw-${{ matrix.goos }}-${{ matrix.goarch }}.exe \
+            ./cmd/ipmw
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipm-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            ipm-${{ matrix.goos }}-${{ matrix.goarch }}*
+            ipmw-${{ matrix.goos }}-${{ matrix.goarch }}*
+
+  release:
+    name: GitHub Release
+    needs: build
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version }}" ]; then
+            echo "tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          generate_release_notes: true
+          files: artifacts/**
+
+  ping:
+    name: Ping website
+    needs: release
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.ping_website)
+    runs-on: ubuntu-latest
+    permissions: {}
+
+    steps:
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version }}" ]; then
+            echo "tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notify website of new release
+        env:
+          PING_URL: ${{ secrets.WEBSITE_PING_URL }}
+          PING_TOKEN: ${{ secrets.WEBSITE_PING_TOKEN }}
+        run: |
+          VERSION="${{ steps.ver.outputs.tag }}"
+          curl --fail -X POST "$PING_URL" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: ******" \
+            -d "{\"version\": \"$VERSION\"}"
