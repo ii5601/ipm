@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ii5601/ipm/internal/ipm"
 )
@@ -20,6 +21,11 @@ func run(args []string) error {
 	if len(args) == 0 {
 		printUsage()
 		return nil
+	}
+
+	// Handle ipm:// URLs passed directly as the first argument.
+	if strings.HasPrefix(args[0], ipm.Scheme+"://") {
+		return runProtocolURL(args[0])
 	}
 
 	switch args[0] {
@@ -40,6 +46,10 @@ func run(args []string) error {
 		return runManifestCommand(args[1:])
 	case "package":
 		return runPackageCommand(args[1:])
+	case "install":
+		return runInstallCommand(args[1:])
+	case "protocol":
+		return runProtocolCommand(args[1:])
 	case "update":
 		return runUpdateCommand(args[1:])
 	case "help", "--help", "-h":
@@ -125,9 +135,76 @@ func runManifestCommand(args []string) error {
 	}
 }
 
+func runInstallCommand(args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: ipm install <tree>/<package> [root]")
+	}
+	root := "."
+	if len(args) > 1 {
+		root = args[1]
+	}
+	pkg := args[0]
+	tree := ""
+	if parts := strings.SplitN(pkg, "/", 2); len(parts) == 2 {
+		tree = parts[0]
+		pkg = parts[1]
+	}
+	fmt.Printf("installing %s", pkg)
+	if tree != "" {
+		fmt.Printf(" from tree %s", tree)
+	}
+	fmt.Printf(" in %s\n", root)
+	fmt.Println("(installation not yet implemented)")
+	return nil
+}
+
+func runProtocolCommand(args []string) error {
+	if len(args) == 0 {
+		return errors.New("protocol command requires a subcommand: register, unregister")
+	}
+	switch args[0] {
+	case "register":
+		handler := ""
+		if len(args) > 1 {
+			handler = args[1]
+		}
+		if err := ipm.RegisterProtocol(handler); err != nil {
+			return err
+		}
+		fmt.Println("ipm:// protocol handler registered")
+		return nil
+	case "unregister":
+		if err := ipm.UnregisterProtocol(); err != nil {
+			return err
+		}
+		fmt.Println("ipm:// protocol handler unregistered")
+		return nil
+	default:
+		return fmt.Errorf("unknown protocol subcommand %q", args[0])
+	}
+}
+
+// runProtocolURL handles an ipm:// URL passed directly to the CLI.
+func runProtocolURL(raw string) error {
+	action, err := ipm.ParseURL(raw)
+	if err != nil {
+		return err
+	}
+	switch action.Action {
+	case "install":
+		pkg := action.Package
+		if action.Tree != "" {
+			pkg = action.Tree + "/" + pkg
+		}
+		return runInstallCommand([]string{pkg})
+	default:
+		return fmt.Errorf("unknown ipm:// action %q", action.Action)
+	}
+}
+
+
 func runPackageCommand(args []string) error {
 	if len(args) == 0 {
-		return errors.New("package command requires a subcommand")
 	}
 
 	switch args[0] {
@@ -194,5 +271,9 @@ Usage:
   ipm manifest validate <file>
   ipm manifest add <tree> <file> [root]
   ipm package list <tree> [root]
-  ipm update check <url> <token> [current-version]`)
+  ipm install <tree>/<package> [root]
+  ipm protocol register [handler-path]
+  ipm protocol unregister
+  ipm update check <url> <token> [current-version]
+  ipm ipm://<action>/...     handle a protocol URL directly`)
 }
